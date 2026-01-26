@@ -5,12 +5,6 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-
-app.UseCors(policy => policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
-
-
-
-
 app.MapGet("/connect", (string user = "anonymous") =>
 {
     MessageStore.ConnectedUsers[user] = DateTime.Now;
