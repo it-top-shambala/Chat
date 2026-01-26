@@ -12,7 +12,7 @@ namespace Client.ViewModels;
 public class MainWindowViewModel : INotifyPropertyChanged
 {
     public ObservableCollection<Message> Messages { get; set; } = [];
-    private string _serverUrl = "http://localhost:5214";
+    private string _serverUrl;
 
     private string? _username;
     public string? Username
@@ -35,8 +35,8 @@ public class MainWindowViewModel : INotifyPropertyChanged
         Task.Run(StartRecieve);
         SendButton = new LambdaCommand(
             async (_) => SendMessageAsync(_sendText),
-            _ => string.IsNullOrEmpty(_sendText) 
-            && string.IsNullOrEmpty(_username)
+            _ => !string.IsNullOrEmpty(_sendText) 
+            && !string.IsNullOrEmpty(_username)
             );
     }
     private async Task StartRecieve()
@@ -68,7 +68,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
     }
     private void GetServerUrl()
     {
-        _serverUrl = "http://localhost:5214";
+        _serverUrl = "http://localhost:5000";
         var configPath = "ServerUrl.json";
         if (System.IO.File.Exists(configPath))
         {
