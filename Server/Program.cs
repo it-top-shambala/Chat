@@ -1,9 +1,12 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 
-
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
+
+
+
+
 
 app.MapGet("/connect", (string user = "anonymous") =>
 {
@@ -11,28 +14,33 @@ app.MapGet("/connect", (string user = "anonymous") =>
     return Results.Json(new { status = "connected", user });
 });
 
-
 app.MapPost("/send", async Task<IResult> (HttpContext context) =>
 {
     using var reader = new StreamReader(context.Request.Body);
     string body = await reader.ReadToEndAsync();
 
-    Message? message = null;
+    MessageDto? message = null;
     try
     {
-        message = JsonSerializer.Deserialize<Message>(body);
+        message = JsonSerializer.Deserialize<MessageDto>(body);
     }
     catch { }
 
     if (message?.Text != null)
     {
-        MessageStore.Messages.Add(message with { Timestamp = DateTime.Now });
-        return Results.Json(new { status = "sent", message = message with { Timestamp = DateTime.Now } });
+        var storedMessage = new StoredMessage(
+            Id: MessageStore.NextId++,
+            Username: message.Username,
+            Text: message.Text,
+            Timestamp: DateTime.UtcNow
+        );
+
+        MessageStore.Messages.Add(storedMessage);
+        return Results.Json(new { status = "sent", message = storedMessage });
     }
 
     return Results.Json(new { error = "Invalid message" }, statusCode: 400);
 });
-
 
 app.MapGet("/receive", (string since = "") =>
 {
@@ -44,7 +52,6 @@ app.MapGet("/receive", (string since = "") =>
         .ToArray();
     return Results.Json(new { messages = newMessages });
 });
-
 
 app.MapGet("/users", () =>
 {
@@ -61,10 +68,15 @@ Console.WriteLine("🚀 Сервер запущен на http://localhost:5000")
 
 
 
-record Message(string User, string Text, DateTime Timestamp);
+
+record MessageDto(string Username, string Text);
+
+
+record StoredMessage(int Id, string Username, string Text, DateTime Timestamp);
 
 static class MessageStore
 {
-    public static ConcurrentBag<Message> Messages = new();
+    public static int NextId = 1;
+    public static ConcurrentBag<StoredMessage> Messages = new();
     public static ConcurrentDictionary<string, DateTime> ConnectedUsers = new();
 }
