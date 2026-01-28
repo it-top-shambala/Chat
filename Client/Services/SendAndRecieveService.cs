@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Json;
@@ -12,7 +13,7 @@ namespace Client.Services;
 
 public class SendAndRecieveService
 {
-    private static HttpClient _httpClient = new HttpClient();
+    private static readonly HttpClient _httpClient = new HttpClient();
 
     public static async void SendMessageAsync(string serverUrl, Message message)
     {
@@ -23,7 +24,17 @@ public class SendAndRecieveService
     }
     public static async Task<List<Message>> RecieveMessageAsync(string serverUrl)
     {
-        using var result = await _httpClient.GetAsync(serverUrl);
-        return await result.Content.ReadFromJsonAsync<List<Message>>()??[];
+        try
+        {
+            using var response = await _httpClient.GetAsync(serverUrl);
+
+            var messages = await response.Content.ReadFromJsonAsync<List<Message>>();
+            return messages ?? new List<Message>();
+        }
+        catch
+        {
+            Debug.WriteLine("Ошибка получения сообщений из сервера сервера");
+            return [];
+        }
     }
 }
