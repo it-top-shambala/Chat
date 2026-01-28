@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Windows;
 using Client.Models;
 using Client.Services;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace Client.ViewModels;
 
@@ -39,16 +40,17 @@ public class MainWindowViewModel : INotifyPropertyChanged
             && !string.IsNullOrEmpty(_username)
             );
     }
-    private async Task StartRecieve()
+    private async void StartRecieve()
     {
         while (true)
         {
             await Task.Delay(1000);
 
-            var recieve = await SendAndRecieveService.RecieveMessageAsync(_serverUrl + "/recieve");
+            var recieve = await SendAndRecieveService.RecieveMessageAsync(_serverUrl + "/receive");
             if (recieve == null) continue;
+            if (recieve.Count == 0) continue;
 
-            await Application.Current.Dispatcher.InvokeAsync(() =>
+            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 foreach (var item in recieve)
                 {
@@ -65,6 +67,7 @@ public class MainWindowViewModel : INotifyPropertyChanged
             Username = _username,
         };
         SendAndRecieveService.SendMessageAsync(_serverUrl + "/send", sendMessage);
+        SendText = string.Empty;
     }
     private void GetServerUrl()
     {
