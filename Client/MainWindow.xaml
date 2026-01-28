@@ -185,9 +185,7 @@
                                    FontSize="15"
                                    FontWeight="SemiBold"
                                    Foreground="{StaticResource Text}"/>
-                        <TextBlock Text="Получение: /recieve   Отправка: /send"
-                                   FontSize="12"
-                                   Foreground="{StaticResource Text2}"/>
+                       
                     </StackPanel>
                 </Border>
 

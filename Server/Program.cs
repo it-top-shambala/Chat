@@ -4,79 +4,103 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 var app = builder.Build();
 
-
-
-
-
-app.MapGet("/connect", (string user = "anonymous") =>
-{
-    MessageStore.ConnectedUsers[user] = DateTime.Now;
-    return Results.Json(new { status = "connected", user });
-});
-
-app.MapPost("/send", async Task<IResult> (HttpContext context) =>
+app.MapPost("/send", async (HttpContext context) =>
 {
     using var reader = new StreamReader(context.Request.Body);
     string body = await reader.ReadToEndAsync();
 
-    MessageDto? message = null;
+    Message? incoming;
     try
     {
-        message = JsonSerializer.Deserialize<MessageDto>(body);
+        incoming = JsonSerializer.Deserialize<Message>(body);
     }
-    catch { }
-
-    if (message?.Text != null)
+    catch
     {
-        var storedMessage = new StoredMessage(
-            Id: MessageStore.NextId++,
-            Username: message.Username,
-            Text: message.Text,
-            Timestamp: DateTime.UtcNow
-        );
-
-        MessageStore.Messages.Add(storedMessage);
-        return Results.Json(new { status = "sent", message = storedMessage });
+        return Results.BadRequest();
     }
 
-    return Results.Json(new { error = "Invalid message" }, statusCode: 400);
+    if (incoming == null) return Results.BadRequest();
+    if (string.IsNullOrWhiteSpace(incoming.Username)) return Results.BadRequest();
+    if (string.IsNullOrWhiteSpace(incoming.Text)) return Results.BadRequest();
+
+    var stored = new Message
+    {
+        Id = MessageStore.NextId++,
+        Username = incoming.Username,
+        Text = incoming.Text,
+        Timestamp = DateTime.UtcNow
+    };
+
+    MessageStore.Enqueue(stored);
+
+    return Results.Json(new[] { stored });
 });
 
-app.MapGet("/receive", (string since = "") =>
+app.MapGet("/receive", (HttpContext context) =>
 {
-    var lastTime = DateTime.TryParse(since, out var parsed) ? parsed : DateTime.MinValue;
-    var newMessages = MessageStore.Messages
-        .Where(m => m.Timestamp > lastTime)
+    var clientKey = GetClientKey(context);
+
+    var last = MessageStore.LastDeliveredUtc.GetOrAdd(clientKey, DateTime.MinValue);
+
+    var all = MessageStore.Snapshot();
+
+    var fresh = all
+        .Where(m => m.Timestamp > last)
         .OrderBy(m => m.Timestamp)
-        .Take(100)
+        .Take(200)
         .ToArray();
-    return Results.Json(new { messages = newMessages });
+
+    if (fresh.Length > 0)
+        MessageStore.LastDeliveredUtc[clientKey] = fresh[^1].Timestamp;
+
+    return Results.Json(fresh);
+});
+
+app.MapGet("/connect", (string user = "anonymous") =>
+{
+    MessageStore.ConnectedUsers[user] = DateTime.UtcNow;
+    return Results.Json(new[] { user }); // массив
 });
 
 app.MapGet("/users", () =>
 {
-    var activeUsers = MessageStore.ConnectedUsers
-        .Where(kvp => kvp.Value > DateTime.Now.AddMinutes(-5))
-        .Select(kvp => kvp.Key)
+    var users = MessageStore.ConnectedUsers
+        .Where(x => x.Value > DateTime.UtcNow.AddMinutes(-5))
+        .Select(x => x.Key)
+        .Distinct()
+        .OrderBy(x => x)
         .ToArray();
-    return Results.Json(new { users = activeUsers });
+
+    return Results.Json(users); 
 });
 
-app.Run("http://localhost:5000");
+app.Run("http://localhost:5214");
 
-Console.WriteLine("🚀 Сервер запущен на http://localhost:5000");
-
-
-
-
-record MessageDto(string Username, string Text);
-
-
-record StoredMessage(int Id, string Username, string Text, DateTime Timestamp);
+static string GetClientKey(HttpContext ctx)
+{
+    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+    var ua = ctx.Request.Headers.UserAgent.ToString();
+    return ip + "|" + ua;
+}
+public class Message
+{
+    public int Id { get; set; }
+    public string Username { get; set; } = "";
+    public string Text { get; set; } = "";
+    public DateTime Timestamp { get; set; } = DateTime.UtcNow;
+}
 
 static class MessageStore
 {
     public static int NextId = 1;
-    public static ConcurrentBag<StoredMessage> Messages = new();
+
+    private static readonly ConcurrentQueue<Message> _messages = new();
+
+    public static ConcurrentDictionary<string, DateTime> LastDeliveredUtc = new();
+
     public static ConcurrentDictionary<string, DateTime> ConnectedUsers = new();
+
+    public static void Enqueue(Message msg) => _messages.Enqueue(msg);
+
+    public static Message[] Snapshot() => _messages.ToArray();
 }
