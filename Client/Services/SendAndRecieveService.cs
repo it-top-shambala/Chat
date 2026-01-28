@@ -6,6 +6,7 @@ using System.Net.Http;
 using System.Net.Http.Json;
 using System.Security.Policy;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Client.Models;
 
@@ -22,19 +23,23 @@ public class SendAndRecieveService
 
         await _httpClient.PostAsync(serverUrl, content);
     }
+
     public static async Task<List<Message>> RecieveMessageAsync(string serverUrl)
     {
         try
         {
-            using var response = await _httpClient.GetAsync(serverUrl);
+            var response = await _httpClient.GetAsync(serverUrl);
+            response.EnsureSuccessStatusCode();
 
-            var messages = await response.Content.ReadFromJsonAsync<List<Message>>();
-            return messages ?? new List<Message>();
+            var json = await response.Content.ReadAsStringAsync();
+            var result = JsonSerializer.Deserialize<Dictionary<string, List<Message>>>(json);
+
+            return result?.GetValueOrDefault("messages") ?? new List<Message>();
         }
-        catch
+        catch (Exception ex)
         {
-            Debug.WriteLine("Ошибка получения сообщений из сервера сервера");
-            return [];
+            Debug.WriteLine($"Ошибка получения сообщений: {ex.Message}");
+            return new List<Message>();
         }
     }
 }
